@@ -79,6 +79,7 @@ int main(int argc, char* argv[]) {
                    "--ak47  Sync clock on archon AK47 keyboard\n"
                    "--ak74  Sync clock on archon AK74 keyboard\n"
                    "--help  Show this help message\n");
+            return 0;
         }
         else {
             printf("%s is not a valid argument.\n\nRun 'archon-timesync --help' for help.", argv[1]);
