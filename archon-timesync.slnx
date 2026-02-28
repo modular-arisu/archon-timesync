@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="archon-timesync.vcxproj" Id="ac025b3a-5a9d-4085-b8dd-dd624946037c" />
+</Solution>
