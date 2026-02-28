@@ -6,6 +6,10 @@
 #include <ctime>
 #include <hidapi/hidapi.h>
 
+// App metadata
+std::string APP_VERSION = "v1.0.0";
+std::string APP_AUTHOR = "modular-arisu";
+
 // Device Definitions
 struct DeviceConfig {
     uint16_t vid;
@@ -15,7 +19,7 @@ struct DeviceConfig {
 };
 
 const DeviceConfig AK74_CONF = { 0x0C45, 0x800A, 3, "AK74" };
-const DeviceConfig AK47_CONF = { 0x0C45, 0x7403, 3, "AK47" }; // AK47용 PID/Interface는 예시이므로 확인 필요
+const DeviceConfig AK47_CONF = { 0x0C45, 0x7403, 3, "AK47" };
 
 /**
  * @brief Sends a feature report and waits for sync response.
@@ -55,16 +59,39 @@ void get_now(struct tm* result) {
 }
 
 int main(int argc, char* argv[]) {
+    // 0. Print welcome text
+    printf("Archon keyboard LCD clock synchronization tool (%s) by %s\n\n",
+           APP_VERSION.c_str(), APP_AUTHOR.c_str());
+
     // 1. Parse Arguments
     DeviceConfig selected = AK74_CONF; // Default
-    if (argc > 1) {
+    if (argc == 2) {
         if (strcmp(argv[1], "--ak47") == 0) {
             selected = AK47_CONF;
-            printf("AK47 is not supported yet. Head to https://github.com/");
+            printf("AK47 is not supported yet. Head to https://github.com/modular-arisu/archon-timesync/issues/1 and share AK47's VID and PID to add support for your device.\n");
+            return -1;
         }
         else if (strcmp(argv[1], "--ak74") == 0) {
             selected = AK74_CONF;
         }
+        else if (strcmp(argv[1], "--help") == 0) {
+            printf("Available argument options:\n"
+                   "--ak47  Sync clock on archon AK47 keyboard\n"
+                   "--ak74  Sync clock on archon AK74 keyboard\n"
+                   "--help  Show this help message\n");
+        }
+        else {
+            printf("%s is not a valid argument.\n\nRun 'archon-timesync --help' for help.", argv[1]);
+            return -1;
+        }
+    }
+    else if (argc > 2) {
+        printf("Too many arguments supplied.\n\nRun 'archon-timesync --help' for help.");
+        return -1;
+    }
+    else {
+        printf("No keyboard selected. Select your keyboard via argument.\n\nRun 'archon-timesync --help' for help.");
+        return -1;
     }
 
     printf("Target Device: %s (VID:0x%04X, PID:0x%04X, IF:%d)\n",
