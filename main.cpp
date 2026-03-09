@@ -5,21 +5,11 @@
 #include <cstring>
 #include <ctime>
 #include <hidapi/hidapi.h>
+#include "supported_devices.h"
 
 // App metadata
 std::string APP_VERSION = "v1.0.0";
 std::string APP_AUTHOR = "modular-arisu";
-
-// Device Definitions
-struct DeviceConfig {
-    uint16_t vid;
-    uint16_t pid;
-    int interface_no;
-    const char* name;
-};
-
-const DeviceConfig AK74_CONF = { 0x0C45, 0x800A, 3, "AK74" };
-const DeviceConfig AK47_CONF = { 0x0C45, 0x7403, 3, "AK47" };
 
 /**
  * @brief Sends a feature report and waits for sync response.
@@ -58,82 +48,13 @@ void get_now(struct tm* result) {
 #endif
 }
 
-int main(int argc, char* argv[]) {
-    // 0. Print welcome text
-    printf("Archon keyboard LCD clock synchronization tool (%s) by %s\n\n",
-           APP_VERSION.c_str(), APP_AUTHOR.c_str());
-
-    // 1. Parse Arguments
-    DeviceConfig selected = AK74_CONF; // Default
-    if (argc == 2) {
-        if (strcmp(argv[1], "--ak47") == 0) {
-            selected = AK47_CONF;
-            printf("AK47 is not supported yet. Head to https://github.com/modular-arisu/archon-timesync/issues/1 and share AK47's VID and PID to add support for your device.\n");
-            return -1;
-        }
-        else if (strcmp(argv[1], "--ak74") == 0) {
-            selected = AK74_CONF;
-        }
-        else if (strcmp(argv[1], "--help") == 0) {
-            printf("Available argument options:\n"
-                   "--ak47  Sync clock on archon AK47 keyboard\n"
-                   "--ak74  Sync clock on archon AK74 keyboard\n"
-                   "--help  Show this help message\n");
-            return 0;
-        }
-        else {
-            printf("%s is not a valid argument.\n\nRun 'archon-timesync --help' for help.", argv[1]);
-            return -1;
-        }
-    }
-    else if (argc > 2) {
-        printf("Too many arguments supplied.\n\nRun 'archon-timesync --help' for help.");
-        return -1;
-    }
-    else {
-        printf("No keyboard selected. Select your keyboard via argument.\n\nRun 'archon-timesync --help' for help.");
-        return -1;
-    }
-
-    printf("Target Device: %s (VID:0x%04X, PID:0x%04X, IF:%d)\n",
-        selected.name, selected.vid, selected.pid, selected.interface_no);
-
-    if (hid_init()) return -1;
-
-    // 2. Enumerate and Find Path
-    struct hid_device_info* devs, * cur_dev;
-    devs = hid_enumerate(selected.vid, selected.pid);
-
-    char* target_path = nullptr;
-    for (cur_dev = devs; cur_dev != nullptr; cur_dev = cur_dev->next) {
-        if (cur_dev->interface_number == selected.interface_no) {
-#ifdef _WIN32
-            target_path = _strdup(cur_dev->path);
-#else
-            target_path = strdup(cur_dev->path);
-#endif
-            break;
-        }
-    }
-
-    if (!target_path) {
-        std::cerr << "Device interface not found!" << std::endl;
-        hid_free_enumeration(devs);
-        hid_exit();
-        return -1;
-    }
-
-    hid_device* handle = hid_open_path(target_path);
-    free(target_path);
-    hid_free_enumeration(devs);
-
+bool sync_time(const char* dev_path) {
+    hid_device* handle = hid_open_path(dev_path);
     if (!handle) {
         std::cerr << "Failed to open device handle." << std::endl;
-        hid_exit();
-        return -1;
+        return false;
     }
 
-    // 3. Protocol Execution with Error Checking
     bool success = true;
 
     // Step 1: Init 1
@@ -185,6 +106,73 @@ int main(int argc, char* argv[]) {
     }
 
     hid_close(handle);
+    return success;
+}
+
+int main(int argc, char* argv[]) {
+    printf("Archon keyboard LCD clock synchronization tool (%s) by %s\n\n",
+        APP_VERSION.c_str(), APP_AUTHOR.c_str());
+
+    unsigned short target_vid = 0x0;
+    unsigned short target_pid = 0x0;
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--vid" && i + 1 < argc) {
+            target_vid = (unsigned short)std::stoul(argv[++i], nullptr, 16);
+        }
+        else if (arg == "--pid" && i + 1 < argc) {
+            target_pid = (unsigned short)std::stoul(argv[++i], nullptr, 16);
+        }
+    }
+
+    if (hid_init()) {
+        std::cerr << "Failed to init hidapi library." << std::endl;
+        return -1;
+    }
+
+    std::cout << target_vid << std::endl;
+    std::cout << target_pid << std::endl;
+
+
+    struct hid_device_info* devs;
+    struct hid_device_info* cur_dev;
+    devs = hid_enumerate(0x0, 0x0);
+
+    std::vector<detected_device> detected_devices;
+
+    for (cur_dev = devs; cur_dev != nullptr; cur_dev = cur_dev->next) {
+        for (const auto& supported : SUPPORTED_DEVICES) {
+
+            // Is on the supported device list
+            if (cur_dev->vendor_id == supported.vid && cur_dev->product_id == supported.pid) {
+
+                // Knock to see if interface is open to set/get feature
+                hid_device* handle = hid_open_path(cur_dev->path);
+                if (handle) {
+                    unsigned char probe_buf[65] = { 0 };
+                    if (hid_get_feature_report(handle, probe_buf, 65) > 0) {
+                        // Is open
+                        detected_device dd;
+                        dd.path = cur_dev->path;
+                        dd.vid = cur_dev->vendor_id;
+                        dd.pid = cur_dev->product_id;
+                        dd.model_name = supported.model_name;
+                        detected_devices.push_back(dd);
+                    }
+                    hid_close(handle);
+                }
+            }
+        }
+    }
+
+    hid_free_enumeration(devs);
+
+    for (const auto& dev : detected_devices) {
+        std::cout << dev.path;
+        std::cout << "\n";
+        sync_time(dev.path.c_str());
+    }
+
     hid_exit();
-    return success ? 0 : -1;
 }
