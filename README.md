@@ -1,3 +1,5 @@
+**DEPRECATED. SEE NEW PROJECT: [sonix-toolkit](https://github.com/modular-arisu/sonix-toolkit)**
+
 # archon-timesync
 **Archon keyboard LCD clock synchronization tool**
 
